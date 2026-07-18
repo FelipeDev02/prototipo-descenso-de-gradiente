@@ -168,8 +168,69 @@ Corrí el bucle de forma independiente fuera del notebook y comprobé tres cosas
 
 ---
 
+## Tarea 4: Búsqueda Aleatoria (baseline)
+
+### Qué hice
+
+Implementé en la celda 8 la función `random_search`: en cada intento sortea `W` y `b` al azar (uniforme) dentro de un rango, evalúa `cost_function`, y se queda con el mejor par encontrado hasta el momento.
+
+```python
+def random_search(X, y, max_iter=MAX_ITER_RS, patience=PATIENCE,
+                   w_range=W_RANGE, b_range=B_RANGE, seed=RANDOM_STATE):
+    rng = np.random.default_rng(seed)
+    best_W = rng.uniform(*w_range, size=X.shape[1])
+    best_b = rng.uniform(*b_range)
+    best_cost = cost_function(X, y, best_W, best_b)
+    cost_history = [best_cost]
+    no_improve = 0
+
+    for i in range(1, max_iter + 1):
+        W_candidate = rng.uniform(*w_range, size=X.shape[1])
+        b_candidate = rng.uniform(*b_range)
+        cost_candidate = cost_function(X, y, W_candidate, b_candidate)
+
+        if cost_candidate < best_cost:
+            best_W, best_b, best_cost = W_candidate, b_candidate, cost_candidate
+            no_improve = 0
+        else:
+            no_improve += 1
+
+        cost_history.append(best_cost)
+
+        if no_improve >= patience:
+            break
+
+    return best_W, best_b, cost_history
+```
+
+### Para qué (propósito dentro del proyecto)
+
+Es el baseline "sin cálculo" contra el que se compara el Descenso de Gradiente: mismo modelo (`predict`, `cost_function`), mismo dataset, pero sin usar la derivada para decidir hacia dónde moverse — solo prueba puntos al azar y se queda con el mejor. La tarea 5 va a comparar `iters_rs` vs `iters_gd`, tiempo, CPU/RAM y precisión final entre ambos métodos.
+
+### Cómo lo hice
+
+- Rango de búsqueda: `W_RANGE = B_RANGE = (-10, 10)`.
+- Presupuesto máximo: `MAX_ITER_RS = 5000` (mismo tope que el Descenso de Gradiente).
+- Corte anticipado: si el mejor costo no mejora en `PATIENCE = 500` intentos seguidos, se detiene.
+- Guardo en `cost_history` el **mejor costo hasta ese punto** en cada iteración (no el costo del intento actual), para que la curva sea comparable con la del Descenso de Gradiente en la tarea 6.
+
+### Por qué lo hice así
+
+| Decisión | Cómo | Por qué |
+|---|---|---|
+| `max_iter = 5000` | Mismo tope que `gradient_descent` | Para que la comparación de la tarea 5 sea justa: ambos métodos parten del mismo presupuesto máximo de intentos |
+| Rango `(-10, 10)` | `rng.uniform(*w_range, ...)` para `W` y `b` | Cubre cómodamente la solución que encontró el Descenso de Gradiente (`W≈[-2.1, 5.6], b≈-2.0`), sin ser tan amplio como para que la búsqueda sea insensata |
+| `patience = 500` | Se detiene si `no_improve >= patience` | A diferencia del Descenso de Gradiente, que tiene un criterio de convergencia natural basado en el gradiente, la búsqueda aleatoria no "sabe" cuándo parar por sí sola; sin este corte correría siempre hasta `max_iter` aunque ya no esté mejorando, distorsionando la comparación de tiempo/iteraciones de la tarea 5 |
+| `seed = RANDOM_STATE` | Misma semilla 42 que el resto del notebook | Reproducibilidad: el resultado es el mismo cada vez que se corre |
+| Guardar el mejor costo por iteración, no el del intento actual | `cost_history.append(best_cost)` dentro del bucle | Así la curva es monótonamente no creciente y comparable visualmente con la del Descenso de Gradiente en la tarea 6 |
+
+### Cómo lo verifiqué
+
+Corrí la celda de forma independiente y comprobé con un `assert` que el "mejor costo" es no creciente en cada iteración (por construcción, nunca puede empeorar). Resultado: converge en 556 iteraciones (bastante antes del tope de 5000), con costo final 0.0276 y precisión 96.8% — muy cercano a lo que logró el Descenso de Gradiente (0.0294 de costo, 96.4% de precisión), pero llegando ahí en 556 intentos en vez de 2445. Tiene sentido: con solo 3 parámetros (`W1, W2, b`), el muestreo aleatorio puede ser sorprendentemente competitivo en cantidad de intentos. La comparación real de eficiencia (tiempo de cómputo, CPU, RAM) se hará en la tarea 5, que es donde se espera que la diferencia entre ambos métodos se note con más claridad.
+
+---
+
 ## Próximos pasos
 
-- **Tarea 4:** implementar la Búsqueda Aleatoria como baseline de comparación.
 - **Tarea 5:** medir CPU, RAM y tiempo real con `psutil`, además de iteraciones hasta converger y precisión final, para ambos métodos.
 - **Tarea 6:** graficar la curva de error vs. iteración y la comparación entre métodos, exportando los resultados como PNG.
