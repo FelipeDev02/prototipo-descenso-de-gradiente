@@ -11,3 +11,6 @@ env/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Claude Code (config local de la herramienta)
+.claude/
