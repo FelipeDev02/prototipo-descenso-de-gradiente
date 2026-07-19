@@ -230,7 +230,134 @@ Corrí la celda de forma independiente y comprobé con un `assert` que el "mejor
 
 ---
 
-## Próximos pasos
+## Tarea 5: Métricas
 
-- **Tarea 5:** medir CPU, RAM y tiempo real con `psutil`, además de iteraciones hasta converger y precisión final, para ambos métodos.
-- **Tarea 6:** graficar la curva de error vs. iteración y la comparación entre métodos, exportando los resultados como PNG.
+### Qué hice
+
+Implementé en la celda 10 la función `measure`, que envuelve la ejecución de `gradient_descent` y `random_search` para capturar tiempo real, CPU y RAM con `psutil`, además de reutilizar las iteraciones y precisión que ya calculan ambas funciones. Junté todo en una tabla `metricas` (`pandas.DataFrame`) y la exporté a `metricas.csv`.
+
+```python
+def measure(func, *args, **kwargs):
+    process = psutil.Process()
+    process.cpu_percent(interval=None)  # calentamiento
+    mem_before = process.memory_info().rss
+
+    t0 = time.perf_counter()
+    result = func(*args, **kwargs)
+    t1 = time.perf_counter()
+
+    cpu_pct = process.cpu_percent(interval=None)
+    mem_after = process.memory_info().rss
+
+    elapsed = t1 - t0
+    ram_delta_mb = (mem_after - mem_before) / (1024 ** 2)
+    return result, elapsed, cpu_pct, ram_delta_mb
+```
+
+### Para qué (propósito dentro del proyecto)
+
+Es la comparación cuantitativa entre el método basado en cálculo (Descenso de Gradiente) y el baseline sin cálculo (Búsqueda Aleatoria), que es justamente el objetivo del prototipo según el README. `metricas.csv` queda listo para pegarse directo en la diapositiva del PPT, y la tabla es la que la tarea 6 va a usar para graficar la comparación entre métodos.
+
+### Cómo lo hice
+
+Volví a ejecutar ambos métodos (no reutilicé los resultados de las celdas 6 y 8) porque esas celdas no habían medido CPU/RAM/tiempo, solo costo e iteraciones. `measure` toma cualquier función y sus argumentos, mide el tiempo con `time.perf_counter()`, y usa `psutil.Process()` para leer CPU y memoria (RSS) antes y después de la llamada. Con los resultados arme una tabla con columnas: Método, Iteraciones, Tiempo (s), CPU (%), RAM (MB), Costo final, Precisión final — una fila por método — y la exporté con `metricas.to_csv("metricas.csv", index=False)`.
+
+### Por qué lo hice así
+
+| Decisión | Cómo | Por qué |
+|---|---|---|
+| Volver a correr ambos métodos en vez de reusar resultados previos | Llamo `gradient_descent(X, y)` y `random_search(X, y)` de nuevo dentro de `measure` | Las tareas 3 y 4 no midieron CPU/RAM/tiempo; para obtener esas métricas hay que perfilar la ejecución real, no se pueden calcular después del hecho |
+| "Calentar" `cpu_percent()` con una llamada previa | `process.cpu_percent(interval=None)` antes de medir | La primera lectura de `cpu_percent()` siempre devuelve 0.0 porque no tiene un punto de referencia anterior; sin este paso el CPU% medido saldría mal para ambos métodos |
+| Medir RAM como diferencia (`mem_after - mem_before`), no como valor absoluto | `process.memory_info().rss` antes y después | El RSS absoluto incluye toda la memoria del proceso de Python (intérprete, librerías cargadas, etc.), no solo lo que usó la función; la diferencia aísla el consumo atribuible a esa llamada |
+| Función genérica `measure(func, *args, **kwargs)` en vez de duplicar la instrumentación para cada método | Se llama una vez con `gradient_descent` y otra con `random_search` | Evita repetir el mismo código de medición dos veces; ambas funciones devuelven la misma forma de resultado `(W, b, cost_history)`, así que la misma envoltura sirve para las dos |
+| Exportar a `metricas.csv` además de mostrar la tabla en el notebook | `metricas.to_csv("metricas.csv", index=False)` | Lo pediste explícitamente, para poder usar los números directo en la diapositiva del PPT sin tener que copiarlos a mano desde el notebook |
+
+### Cómo lo verifiqué
+
+Corrí la celda de forma independiente y generé el `metricas.csv` real del proyecto. Los resultados obtenidos:
+
+| Método | Iteraciones | Tiempo (s) | CPU (%) | RAM (MB) | Costo final | Precisión final |
+|---|---|---|---|---|---|---|
+| Descenso de Gradiente | 2445 | 0.0804 | 97.1 | 0.156 | 0.0294 | 96.4% |
+| Búsqueda Aleatoria | 556 | 0.0103 | 0.0 | 0.000 | 0.0276 | 96.8% |
+
+Estos números confirman lo que ya habíamos visto en las tareas 3 y 4 (iteraciones y precisión), y agregan la parte nueva: en tiempo real, la Búsqueda Aleatoria es ~8 veces más rápida que el Descenso de Gradiente en este problema de solo 3 parámetros — consistente con que necesita casi 5 veces menos iteraciones. El CPU (%) y RAM (MB) de la Búsqueda Aleatoria salieron en 0 porque su ejecución es tan corta (10 ms) que `psutil` no alcanza a registrar un delta medible en esa ventana de tiempo; no es un error, es una limitación esperable de medir procesos muy cortos con esta herramienta, y vale la pena mencionarlo así en el informe final si se usa este dato en el PPT.
+
+---
+
+## Tarea 6: Gráficos
+
+### Qué hice
+
+Implementé en la celda 12 tres gráficos, cada uno exportado a PNG:
+
+1. **`curva_convergencia.png`** — costo (MSE) vs. iteración, con las dos curvas (Descenso de Gradiente y Búsqueda Aleatoria) superpuestas en el mismo eje.
+2. **`comparacion_metodos.png`** — tres gráficos de barras lado a lado (iteraciones, tiempo, precisión final), usando directamente la tabla `metricas` de la tarea 5.
+3. **`frontera_decision.png`** — la frontera de decisión del modelo entrenado con Descenso de Gradiente, dibujada sobre el dataset original (`x1` vs `x2`, coloreado por clase).
+
+### Para qué (propósito dentro del proyecto)
+
+Son los gráficos que van directo a la diapositiva 12 del PPT (según indica el README). La curva de convergencia y la comparación de métricas son las que pide explícitamente la tarea 6; agregué la frontera de decisión porque fue justamente la razón por la que en la tarea 1 elegí generar el dataset con solo 2 features — quería poder mostrar visualmente qué aprendió el modelo, no solo los números.
+
+### Cómo lo hice
+
+- Gráfico 1: `ax1.plot(cost_history_gd, ...)` y `ax1.plot(cost_history_rs, ...)` en el mismo `Axes`, cada serie con su propio eje X implícito (el índice de la lista), así que las curvas tienen distinto largo (2445 vs. 556 puntos) pero se comparan igual de forma visual.
+- Gráfico 2: `plt.subplots(1, 3, ...)` con un subplot de barras por métrica, tomando las columnas directamente del DataFrame `metricas` que ya se había armado en la tarea 5 (no dupliqué números a mano).
+- Gráfico 3: generé una grilla de puntos (`np.meshgrid`) sobre el rango de `x1` y `x2`, evalué `predict(grid, W_gd, b_gd)` en cada punto de la grilla, y usé `contourf`/`contour` para pintar la región donde el modelo predice cada clase (con el corte en 0.5), superponiendo el `scatter` de los datos reales.
+- Cada figura se exporta con `fig.savefig("...", dpi=150)` antes de `plt.show()`.
+
+### Por qué lo hice así
+
+| Decisión | Cómo | Por qué |
+|---|---|---|
+| Curvas superpuestas en un solo gráfico, no en subplots separados | `ax1.plot(...)` dos veces sobre el mismo `Axes` | Así se ve directamente cuál método converge más rápido y a qué costo final, que es el punto central de la comparación |
+| Reutilizar la tabla `metricas` de la tarea 5 para el gráfico 2 | `axes[i].bar(metodos, metricas["..."])` | Evita transcribir números a mano (fuente de errores); si se cambian los hiperparámetros de las tareas 3/4, el gráfico se actualiza solo al re-ejecutar el notebook |
+| `dpi=150` en las exportaciones | Parámetro de `savefig` | Buena resolución para verse nítido en una diapositiva de PPT sin generar archivos pesados |
+| Agregar la frontera de decisión aunque no la pedía literalmente el enunciado de la tarea 6 | Grilla + `predict` + `contourf` | Cumple la promesa que me hice en la tarea 1 al elegir 2 features: mostrar qué aprendió el modelo, no solo la curva de error — es el gráfico más intuitivo para explicarle a alguien que no vio el código |
+| Usar el modelo de la tarea 3 (`W_gd`, `b_gd`), no el re-medido en la tarea 5 (`W_gd_m`) | Referencio las variables originales de la celda 6 | Son numéricamente idénticos (Descenso de Gradiente es determinista, parte siempre de `W=0,b=0`), pero uso las variables "canónicas" del entrenamiento por trazabilidad |
+
+### Cómo lo verifiqué
+
+Corrí las tres celdas de forma independiente, confirmé que los 3 PNG se generan (39 KB, 60 KB y 128 KB respectivamente) y revisé cada imagen:
+
+- La curva de convergencia muestra claramente que la Búsqueda Aleatoria baja más brusco al principio (por el patrón de "mejor hasta ahora") y se estabiliza antes, mientras el Descenso de Gradiente desciende más suave y sigue afinando el costo por más iteraciones.
+- El gráfico de barras confirma visualmente los números de la tarea 5: la Búsqueda Aleatoria gana en iteraciones y tiempo, y ambos métodos quedan prácticamente empatados en precisión final.
+- La frontera de decisión separa razonablemente bien las dos clases (solo un puñado de puntos quedan del lado incorrecto), coherente con la precisión de 96.4% medida en la tarea 3.
+
+### Corrección: paleta de colores invertida en la frontera de decisión
+
+En la primera versión del gráfico 3, el fondo sombreado usaba colores fijos (`colors=["#fde0dd", "#deebf7"]`, rosado para la zona de baja probabilidad y celeste para la de alta) elegidos sin fijarme en la convención de `coolwarm`, el colormap que uso para los puntos (`cmap="coolwarm"`, donde azul = clase 0 y rojo = clase 1). El resultado visual quedaba con los puntos azules cayendo en la zona rosada y los puntos rojos en la zona celeste — a simple vista parece que el modelo clasifica al revés.
+
+Verifiqué numéricamente que **el modelo no tiene ningún error**: los puntos de clase 1 tienen probabilidad predicha alta (0.64–0.95) y los de clase 0 probabilidad baja (0.00–0.45), exactamente como debe ser. El problema era solo visual: dos paletas de colores con la convención invertida entre sí. Corregí intercambiando los colores del fondo (`colors=["#deebf7", "#fde0dd"]`, celeste para la zona de clase 0 y rosado para la zona de clase 1) para que coincidan con `coolwarm`. Con el fix, el gráfico se lee de forma intuitiva: puntos rojos en zona rosada, puntos azules en zona celeste, con las mismas pocas excepciones (errores reales del modelo) que ya sabíamos que existían por la precisión de 96.4%.
+
+**Lección para el informe/defensa:** al graficar predicciones sobre datos reales, siempre hay que verificar que la paleta del fondo (regiones de predicción) y la paleta de los puntos (etiquetas reales) usen la misma convención de color — si no, un modelo perfecto puede parecer roto solo por el gráfico.
+
+### Cómo interpretar cada gráfico
+
+**`curva_convergencia.png` — Costo vs. Iteración**
+
+- Eje X: número de iteración. Eje Y: costo (MSE) en esa iteración.
+- Las dos curvas bajan porque ambos métodos buscan minimizar el error, pero la **forma** de la caída es lo que importa:
+  - *Descenso de Gradiente (azul):* desciende de forma suave y continua. Es lo que predice el cálculo: en cada paso se mueve exactamente en la dirección que más reduce el costo (`-α·∂J/∂W`), así que nunca "retrocede" ni da saltos — es monótona y progresiva.
+  - *Búsqueda Aleatoria (naranja):* baja en **escalones**. `cost_history` guarda el mejor costo encontrado *hasta el momento*, así que la curva queda plana mientras prueba puntos al azar que no mejoran, y cae de golpe cuando por suerte encuentra un punto mejor. No tiene noción de "dirección".
+- Lectura para la presentación: el Descenso de Gradiente converge de forma **informada** (usa la derivada); la Búsqueda Aleatoria converge de forma **ciega** (prueba y error). Esa es la diferencia conceptual central del proyecto.
+
+**`comparacion_metodos.png` — Iteraciones, Tiempo, Precisión**
+
+- Barra más baja = mejor en Iteraciones y Tiempo (más eficiente). Barra más alta = mejor en Precisión.
+- En este dataset, la Búsqueda Aleatoria "gana" en iteraciones y tiempo, y ambos métodos quedan casi empatados en precisión (~96–97%).
+- **Punto importante para la defensa:** esto puede sonar contraintuitivo si el argumento del proyecto es que el cálculo es mejor. La explicación es que el problema tiene solo 3 parámetros (`W1, W2, b`) — un espacio tan chico que probar puntos al azar es viable. Con muchos más parámetros (una red neuronal real, con miles o millones de pesos), la Búsqueda Aleatoria se vuelve inviable exponencialmente, mientras que el Descenso de Gradiente sigue escalando porque siempre sabe hacia dónde moverse. Ese contraste (funciona en este caso chico, pero no escala) es el argumento real a favor del cálculo diferencial, y conviene explicitarlo al mostrar este gráfico.
+
+**`frontera_decision.png` — Frontera de decisión sobre el dataset**
+
+- Cada punto es una muestra: rojo/azul según su clase real (columna `y`, `cmap="coolwarm"`).
+- Las regiones de fondo son lo que el modelo predice para cada zona del plano `x1`-`x2` (celeste = predicción clase 0, rosado = predicción clase 1, alineado con los colores de los puntos tras la corrección de arriba).
+- La línea negra es la frontera de decisión: donde `ŷ = σ(X·W+b) = 0.5`, el punto exacto donde el modelo "duda" entre las dos clases. Es una línea **recta** porque el modelo es lineal (`z = X·W+b`) antes de pasar por la sigmoide — la sigmoide curva la probabilidad, no la forma de la frontera.
+- Cómo leerlo: los puntos del lado de su color correcto están bien clasificados; los pocos que caen del lado opuesto son los errores que explican por qué la precisión es 96.4% y no 100%.
+- Esta línea está determinada directamente por `W_gd` y `b_gd` — es la traducción visual concreta de "para qué sirvió minimizar el costo con la derivada".
+
+---
+
+## Roadmap completo
+
+Con esta tarea se completan las 6 etapas del roadmap definido en el README. El notebook `descenso_gradiente.ipynb` queda funcional de punta a punta: genera el dataset, entrena con ambos métodos, mide sus métricas y exporta los gráficos comparativos (`curva_convergencia.png`, `comparacion_metodos.png`, `frontera_decision.png`) y la tabla (`metricas.csv`) listos para la diapositiva 12 del PPT.
